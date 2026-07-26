@@ -61,6 +61,14 @@ class ProfileFragment : Fragment() {
         binding.layoutProfile.visibility = View.VISIBLE
 
         binding.swipeRefresh.setOnRefreshListener { loadProfile() }
+
+        // Hanya izinkan swipe refresh saat scroll di posisi paling atas
+        binding.layoutProfile.setOnScrollChangeListener(
+            androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
+                binding.swipeRefresh.isEnabled = scrollY == 0
+            }
+        )
+
         loadProfile()
     }
 
@@ -78,7 +86,10 @@ class ProfileFragment : Fragment() {
             binding.swipeRefresh.isRefreshing = false
 
             userResult.onSuccess { user -> displayUser(user) }
-                .onFailure { Toast.makeText(requireContext(), it.message, Toast.LENGTH_LONG).show() }
+                .onFailure {
+                    // Jangan redirect ke login, hanya tampilkan error
+                    Toast.makeText(requireContext(), "Gagal refresh: ${it.message}", Toast.LENGTH_SHORT).show()
+                }
 
             reposResult.onSuccess { repos -> displayRepos(repos) }
                 .onFailure { binding.tvRepoCount.text = "Gagal load repos" }
