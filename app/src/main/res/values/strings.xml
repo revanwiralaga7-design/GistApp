@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GistApp</string>
+    <string name="login_title">GitHub Gist Client</string>
+    <string name="login_subtitle">Masukkan Personal Access Token untuk mengelola gists Anda.</string>
+    <string name="token_label">Personal Access Token</string>
+    <string name="token_hint">ghp_xxxxxxxxxxxxxxxxxxxx</string>
+    <string name="login_button">Login</string>
+    <string name="skip_button">Lewati (Public Only)</string>
+    <string name="how_to_get_token">Cara mendapatkan token?</string>
+    <string name="token_instruction">1. Buka github.com → Settings → Developer settings → Personal access tokens\n2. Pilih Tokens (classic) → Generate new token\n3. Centang scope \"gist\"\n4. Copy token yang dihasilkan</string>
+    <string name="nav_my_gists">Gists Saya</string>
+    <string name="nav_public">Public</string>
+    <string name="create_gist">Buat Gist</string>
+    <string name="edit_gist">Edit Gist</string>
+    <string name="filename_hint">Nama file (contoh: hello.py)</string>
+    <string name="description_hint">Deskripsi (opsional)</string>
+    <string name="content_hint">Konten file...</string>
+    <string name="public_gist">Public</string>
+    <string name="create_button">Buat Gist</string>
+    <string name="update_button">Update Gist</string>
+    <string name="delete_gist">Hapus</string>
+    <string name="share_gist">Bagikan</string>
+    <string name="logout">Logout</string>
+    <string name="about">Tentang</string>
+</resources>
