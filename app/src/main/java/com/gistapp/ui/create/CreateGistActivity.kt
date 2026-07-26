@@ -17,7 +17,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Halaman create / edit gist.
- * Jika menerima "edit_gist_id" di intent, mode edit.
+ * Edit mode: menerima edit_gist_id, edit_gist_description,
+ *            edit_gist_public, edit_gist_filename, edit_gist_content.
  */
 class CreateGistActivity : AppCompatActivity() {
 
@@ -26,6 +27,7 @@ class CreateGistActivity : AppCompatActivity() {
     private lateinit var tokenManager: TokenManager
 
     private var editGistId: String? = null
+    private var editOldFilename: String? = null
     private var isEditMode: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,8 +50,20 @@ class CreateGistActivity : AppCompatActivity() {
         if (isEditMode) {
             binding.toolbar.title = "Edit Gist"
             binding.btnCreate.text = "Update Gist"
+
+            // Pre-fill data lama
+            editOldFilename = intent.getStringExtra("edit_gist_filename") ?: ""
+            val oldContent = intent.getStringExtra("edit_gist_content") ?: ""
+
+            binding.etFilename.setText(editOldFilename)
+            binding.etContent.setText(oldContent)
             binding.etDescription.setText(intent.getStringExtra("edit_gist_description") ?: "")
             binding.switchPublic.isChecked = intent.getBooleanExtra("edit_gist_public", true)
+
+            // Kalau content kosong (truncated), beri hint
+            if (oldContent.isEmpty() && !editOldFilename.isNullOrEmpty()) {
+                binding.tilContent.helperText = "⚠ Konten asli tidak tersedia (terpotong). Edit tetap bisa dilakukan."
+            }
         } else {
             binding.toolbar.title = "Buat Gist Baru"
         }
@@ -76,10 +90,19 @@ class CreateGistActivity : AppCompatActivity() {
         }
         binding.tilContent.error = null
 
+        // Build file map (nullable value = delete file → untuk rename)
+        val filesMap = mutableMapOf<String, GistFileContent?>()
+        filesMap[filename] = GistFileContent(content)
+
+        if (isEditMode && !editOldFilename.isNullOrEmpty() && editOldFilename != filename) {
+            // User rename file → hapus file lama
+            filesMap[editOldFilename!!] = null
+        }
+
         val request = CreateGistRequest(
             description = description.ifEmpty { null },
             isPublic = isPublic,
-            files = mapOf(filename to GistFileContent(content))
+            files = filesMap
         )
 
         binding.progressBar.visibility = View.VISIBLE

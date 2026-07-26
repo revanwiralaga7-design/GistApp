@@ -142,11 +142,18 @@ class GistDetailActivity : AppCompatActivity() {
     }
 
     private fun editGist() {
-        gist?.let {
+        gist?.let { gistData ->
+            // Ambil file pertama dari gist
+            val firstFile = gistData.files.values.firstOrNull()
+            val firstFilename = gistData.files.keys.firstOrNull()
+
             val intent = Intent(this, CreateGistActivity::class.java).apply {
-                putExtra("edit_gist_id", it.id)
-                putExtra("edit_gist_description", it.description ?: "")
-                putExtra("edit_gist_public", it.isPublic)
+                putExtra("edit_gist_id", gistData.id)
+                putExtra("edit_gist_description", gistData.description ?: "")
+                putExtra("edit_gist_public", gistData.isPublic)
+                // Kirim data file pertama
+                putExtra("edit_gist_filename", firstFilename ?: "")
+                putExtra("edit_gist_content", firstFile?.content ?: "")
             }
             startActivity(intent)
         }

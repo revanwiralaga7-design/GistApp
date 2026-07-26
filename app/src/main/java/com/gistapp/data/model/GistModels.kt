@@ -48,11 +48,12 @@ data class GistOwner(
 )
 
 // --- Request body: Create / Update Gist ---
+// Note: Map value nullable — null = delete file (rename support)
 data class CreateGistRequest(
     val description: String?,
     @SerializedName("public")
     val isPublic: Boolean,
-    val files: Map<String, GistFileContent>
+    val files: Map<String, GistFileContent?>
 )
 
 data class GistFileContent(
