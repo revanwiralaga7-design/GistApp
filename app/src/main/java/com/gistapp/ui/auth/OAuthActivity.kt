@@ -8,7 +8,7 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.gistapp.databinding.ActivityOAuthBinding
+import com.gistapp.databinding.ActivityOauthBinding
 import com.gistapp.util.TokenManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
