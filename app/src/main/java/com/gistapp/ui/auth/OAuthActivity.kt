@@ -112,7 +112,7 @@ class OAuthActivity : AppCompatActivity() {
 
                 tokenManager.saveToken(accessToken)
                 Toast.makeText(this@OAuthActivity, "Login berhasil!", Toast.LENGTH_SHORT).show()
-                val mainIntent = Intent(this, MainActivity::class.java)
+                val mainIntent = Intent(this@OAuthActivity, MainActivity::class.java)
                 mainIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 startActivity(mainIntent)
                 finish()
