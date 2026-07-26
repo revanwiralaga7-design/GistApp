@@ -101,6 +101,17 @@
             android:gravity="end">
 
             <Button
+                android:id="@+id/btnEditFile"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="✏️ Edit"
+                android:textSize="12sp"
+                android:textColor="@color/on_background"
+                android:backgroundTint="@color/surface_variant"
+                app:cornerRadius="6dp"
+                style="?android:attr/borderlessButtonStyle" />
+
+            <Button
                 android:id="@+id/btnCopyFile"
                 android:layout_width="wrap_content"
                 android:layout_height="36dp"
