@@ -1,10 +1,7 @@
 package com.gistapp.ui.auth
 
-import android.annotation.SuppressLint
+import android.net.Uri
 import android.os.Bundle
-import android.view.View
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -22,64 +19,59 @@ import java.util.concurrent.TimeUnit
 
 class OAuthActivity : AppCompatActivity() {
 
-    private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
     private lateinit var tvStatus: TextView
     private lateinit var tokenManager: TokenManager
 
     companion object {
-        const val OAUTH_CLIENT_ID = "Ov23li..." // TODO: ganti dengan Client ID kamu
+        // GANTI dengan Client ID aplikasi OAuth GitHub kamu
+        const val OAUTH_CLIENT_ID = "Ov23li..."
+        const val OAUTH_CLIENT_SECRET = "" // GANTI dengan Client Secret kamu
         const val OAUTH_SCOPE = "gist,user,repo"
+        const val REDIRECT_URI = "gistapp://oauth"
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_oauth)
 
-        webView = findViewById(R.id.webView)
         progressBar = findViewById(R.id.progressBar)
         tvStatus = findViewById(R.id.tvStatus)
         tokenManager = TokenManager(this)
 
-        webView.settings.javaScriptEnabled = true
-        webView.settings.domStorageEnabled = true
-
-        webView.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                progressBar.visibility = View.GONE
-
-                if (url != null && url.contains("code=")) {
-                    val code = extractCode(url)
-                    if (code != null) {
-                        webView.visibility = View.GONE
-                        exchangeCodeForToken(code)
-                    } else {
-                        Toast.makeText(this@OAuthActivity, "Gagal membaca kode OAuth", Toast.LENGTH_LONG).show()
-                        finish()
-                    }
-                }
+        // Cek apakah ini redirect balik dari browser
+        val data = intent.data
+        if (data != null && data.toString().startsWith(REDIRECT_URI)) {
+            val code = data.getQueryParameter("code")
+            val error = data.getQueryParameter("error")
+            if (!error.isNullOrEmpty()) {
+                Toast.makeText(this, "OAuth dibatalkan: $error", Toast.LENGTH_LONG).show()
+                finish()
+                return
             }
+            if (!code.isNullOrEmpty()) {
+                tvStatus.text = "Menukarkan kode dengan token..."
+                tvStatus.visibility = android.view.View.VISIBLE
+                progressBar.visibility = android.view.View.VISIBLE
+                exchangeCodeForToken(code)
+            } else {
+                Toast.makeText(this, "Kode OAuth tidak ditemukan", Toast.LENGTH_LONG).show()
+                finish()
+            }
+        } else {
+            // Buka browser untuk login OAuth
+            val authUrl = "https://github.com/login/oauth/authorize" +
+                    "?client_id=$OAUTH_CLIENT_ID" +
+                    "&redirect_uri=$REDIRECT_URI" +
+                    "&scope=$OAUTH_SCOPE"
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(authUrl))
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NO_HISTORY)
+            startActivity(intent)
+            finish()
         }
-
-        val authUrl = "https://github.com/login/oauth/authorize" +
-                "?client_id=$OAUTH_CLIENT_ID" +
-                "&scope=$OAUTH_SCOPE"
-        webView.loadUrl(authUrl)
-    }
-
-    private fun extractCode(url: String): String? {
-        return try {
-            val uri = android.net.Uri.parse(url)
-            uri.getQueryParameter("code")
-        } catch (_: Exception) { null }
     }
 
     private fun exchangeCodeForToken(code: String) {
-        tvStatus.text = "Menukarkan kode dengan token..."
-        tvStatus.visibility = View.VISIBLE
-
         lifecycleScope.launch {
             try {
                 val accessToken = withContext(Dispatchers.IO) {
@@ -88,21 +80,23 @@ class OAuthActivity : AppCompatActivity() {
                         .readTimeout(30, TimeUnit.SECONDS)
                         .build()
 
-                    val params = mapOf(
-                        "client_id" to OAUTH_CLIENT_ID,
-                        "code" to code,
-                        "scope" to OAUTH_SCOPE
-                    ).entries.joinToString("&") { "${it.key}=${it.value}" }
+                    val params = mutableListOf<String>()
+                    params.add("client_id=$OAUTH_CLIENT_ID")
+                    params.add("client_secret=$OAUTH_CLIENT_SECRET")
+                    params.add("code=$code")
+                    params.add("redirect_uri=$REDIRECT_URI")
+                    val queryString = params.joinToString("&")
 
                     val request = Request.Builder()
-                        .url("https://github.com/login/oauth/access_token?$params")
+                        .url("https://github.com/login/oauth/access_token?$queryString")
                         .header("Accept", "application/json")
                         .header("User-Agent", "GistApp-Android")
                         .get()
                         .build()
 
                     val response = client.newCall(request).execute()
-                    val json = JSONObject(response.body?.string() ?: "{}")
+                    val bodyStr = response.body?.string() ?: "{}"
+                    val json = JSONObject(bodyStr)
 
                     if (json.has("error")) {
                         throw Exception(json.optString("error_description",
@@ -110,16 +104,19 @@ class OAuthActivity : AppCompatActivity() {
                     }
 
                     val token = json.optString("access_token", "")
-                    if (token.isEmpty()) throw Exception("Token kosong — cek client_id")
+                    if (token.isEmpty()) throw Exception("Token kosong — cek client_id / client_secret")
                     token
                 }
 
                 tokenManager.saveToken(accessToken)
                 Toast.makeText(this@OAuthActivity, "Login berhasil!", Toast.LENGTH_SHORT).show()
+                val intent = android.content.Intent(this, com.gistapp.ui.MainActivity::class.java)
+                intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
+                startActivity(intent)
                 finish()
             } catch (e: Exception) {
                 tvStatus.text = "Gagal: ${e.message}"
-                webView.visibility = View.VISIBLE
+                progressBar.visibility = android.view.View.GONE
                 Toast.makeText(this@OAuthActivity, "OAuth gagal: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }

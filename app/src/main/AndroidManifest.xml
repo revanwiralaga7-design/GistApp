@@ -27,8 +27,16 @@
 
         <activity
             android:name=".ui.auth.OAuthActivity"
-            android:exported="false"
-            android:theme="@style/Theme.GistApp" />
+            android:exported="true"
+            android:launchMode="standard"
+            android:theme="@style/Theme.GistApp">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="gistapp" android:host="oauth" />
+            </intent-filter>
+        </activity>
 
         <activity
             android:name=".ui.MainActivity"
