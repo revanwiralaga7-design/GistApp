@@ -3,6 +3,7 @@ package com.gistapp.ui.auth
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Base64
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -17,6 +18,8 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.security.MessageDigest
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class OAuthActivity : AppCompatActivity() {
@@ -26,11 +29,10 @@ class OAuthActivity : AppCompatActivity() {
     private lateinit var tokenManager: TokenManager
 
     companion object {
-        // GANTI dengan Client ID aplikasi OAuth GitHub kamu
-        const val OAUTH_CLIENT_ID = "Ov23li..."
-        const val OAUTH_CLIENT_SECRET = "" // GANTI dengan Client Secret kamu
+        const val OAUTH_CLIENT_ID = "Ov23li..." // GANTI dengan Client ID kamu
         const val OAUTH_SCOPE = "gist,user,repo"
         const val REDIRECT_URI = "gistapp://oauth"
+        const val PKCE_PREF_KEY = "pkce_verifier"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,7 +43,6 @@ class OAuthActivity : AppCompatActivity() {
         tvStatus = findViewById(R.id.tvStatus)
         tokenManager = TokenManager(this)
 
-        // Cek apakah ini redirect balik dari browser
         val data = intent.data
         if (data != null && data.toString().startsWith(REDIRECT_URI)) {
             val code = data.getQueryParameter("code")
@@ -61,11 +62,17 @@ class OAuthActivity : AppCompatActivity() {
                 finish()
             }
         } else {
-            // Buka browser untuk login OAuth
+            val codeVerifier = generateCodeVerifier()
+            val prefs = getSharedPreferences("oauth_pkce", MODE_PRIVATE)
+            prefs.edit().putString(PKCE_PREF_KEY, codeVerifier).apply()
+
+            val codeChallenge = generateCodeChallenge(codeVerifier)
             val authUrl = "https://github.com/login/oauth/authorize" +
                     "?client_id=$OAUTH_CLIENT_ID" +
                     "&redirect_uri=$REDIRECT_URI" +
-                    "&scope=$OAUTH_SCOPE"
+                    "&scope=$OAUTH_SCOPE" +
+                    "&code_challenge=$codeChallenge" +
+                    "&code_challenge_method=S256"
             val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(authUrl))
             browserIntent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
             startActivity(browserIntent)
@@ -73,10 +80,24 @@ class OAuthActivity : AppCompatActivity() {
         }
     }
 
+    private fun generateCodeVerifier(): String {
+        return UUID.randomUUID().toString().replace("-", "") + UUID.randomUUID().toString().replace("-", "")
+    }
+
+    private fun generateCodeChallenge(verifier: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest(verifier.toByteArray(Charsets.UTF_8))
+        return Base64.encodeToString(hash, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+    }
+
     private fun exchangeCodeForToken(code: String) {
         lifecycleScope.launch {
             try {
                 val accessToken = withContext(Dispatchers.IO) {
+                    val prefs = getSharedPreferences("oauth_pkce", MODE_PRIVATE)
+                    val codeVerifier = prefs.getString(PKCE_PREF_KEY, "") ?: ""
+                    if (codeVerifier.isEmpty()) throw Exception("PKCE verifier tidak ditemukan")
+
                     val client = OkHttpClient.Builder()
                         .connectTimeout(30, TimeUnit.SECONDS)
                         .readTimeout(30, TimeUnit.SECONDS)
@@ -84,9 +105,9 @@ class OAuthActivity : AppCompatActivity() {
 
                     val params = mutableListOf<String>()
                     params.add("client_id=$OAUTH_CLIENT_ID")
-                    params.add("client_secret=$OAUTH_CLIENT_SECRET")
                     params.add("code=$code")
                     params.add("redirect_uri=$REDIRECT_URI")
+                    params.add("code_verifier=$codeVerifier")
                     val queryString = params.joinToString("&")
 
                     val request = Request.Builder()
@@ -106,9 +127,12 @@ class OAuthActivity : AppCompatActivity() {
                     }
 
                     val token = json.optString("access_token", "")
-                    if (token.isEmpty()) throw Exception("Token kosong — cek client_id / client_secret")
+                    if (token.isEmpty()) throw Exception("Token kosong — cek client_id")
                     token
                 }
+
+                // Bersihkan verifier setelah berhasil
+                getSharedPreferences("oauth_pkce", MODE_PRIVATE).edit().clear().apply()
 
                 tokenManager.saveToken(accessToken)
                 Toast.makeText(this@OAuthActivity, "Login berhasil!", Toast.LENGTH_SHORT).show()
