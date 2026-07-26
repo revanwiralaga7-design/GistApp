@@ -83,3 +83,25 @@ data class GitHubError(
     @SerializedName("documentation_url")
     val documentationUrl: String?
 )
+
+// --- GitHub Repository ---
+data class GitHubRepo(
+    val id: Long,
+    val name: String?,
+    @SerializedName("full_name")
+    val fullName: String?,
+    @SerializedName("html_url")
+    val htmlUrl: String?,
+    val description: String?,
+    val language: String?,
+    @SerializedName("private")
+    val isPrivate: Boolean,
+    @SerializedName("stargazers_count")
+    val stars: Int?,
+    @SerializedName("forks_count")
+    val forks: Int?,
+    @SerializedName("updated_at")
+    val updatedAt: String?,
+    @SerializedName("pushed_at")
+    val pushedAt: String?
+)

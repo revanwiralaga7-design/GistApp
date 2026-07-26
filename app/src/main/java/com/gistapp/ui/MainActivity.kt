@@ -11,14 +11,9 @@ import com.gistapp.databinding.ActivityMainBinding
 import com.gistapp.ui.auth.AuthActivity
 import com.gistapp.ui.create.CreateGistActivity
 import com.gistapp.ui.gistlist.GistListFragment
+import com.gistapp.ui.profile.ProfileFragment
 import com.gistapp.util.TokenManager
 
-/**
- * Main Activity dengan BottomNavigation untuk:
- * - Gists Saya (perlu login)
- * - Gists Publik (bisa tanpa login)
- * - FAB untuk buat gist baru
- */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
@@ -33,7 +28,6 @@ class MainActivity : AppCompatActivity() {
 
         setSupportActionBar(binding.toolbar)
 
-        // Default: tampilkan My Gists
         if (savedInstanceState == null) {
             loadFragment(GistListFragment.newInstance(isPublic = false), "My Gists")
         }
@@ -42,10 +36,17 @@ class MainActivity : AppCompatActivity() {
             when (item.itemId) {
                 R.id.nav_my_gists -> {
                     loadFragment(GistListFragment.newInstance(isPublic = false), "My Gists")
+                    binding.fabCreate.show()
                     true
                 }
                 R.id.nav_public -> {
                     loadFragment(GistListFragment.newInstance(isPublic = true), "Public Gists")
+                    binding.fabCreate.show()
+                    true
+                }
+                R.id.nav_profile -> {
+                    loadFragment(ProfileFragment(), "Profile")
+                    binding.fabCreate.hide()
                     true
                 }
                 else -> false
@@ -56,10 +57,7 @@ class MainActivity : AppCompatActivity() {
             if (tokenManager.hasToken()) {
                 startActivity(Intent(this, CreateGistActivity::class.java))
             } else {
-                // Arahkan ke login
-                val intent = Intent(this, AuthActivity::class.java)
-                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                startActivity(intent)
+                startActivity(Intent(this, AuthActivity::class.java))
                 finish()
             }
         }
@@ -74,16 +72,11 @@ class MainActivity : AppCompatActivity() {
         return when (item.itemId) {
             R.id.action_logout -> {
                 tokenManager.clearToken()
-                val intent = Intent(this, AuthActivity::class.java)
-                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                startActivity(intent)
+                startActivity(Intent(this, AuthActivity::class.java))
                 finish()
                 true
             }
-            R.id.action_about -> {
-                // TODO: About dialog
-                true
-            }
+            R.id.action_about -> true
             else -> super.onOptionsItemSelected(item)
         }
     }

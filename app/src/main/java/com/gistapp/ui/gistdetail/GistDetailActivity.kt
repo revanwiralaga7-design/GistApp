@@ -5,7 +5,10 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.text.method.ScrollingMovementMethod
 import android.view.View
+import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -20,9 +23,6 @@ import com.gistapp.ui.create.CreateGistActivity
 import com.gistapp.util.TokenManager
 import kotlinx.coroutines.launch
 
-/**
- * Halaman detail gist — menampilkan semua file, deskripsi, dan aksi.
- */
 class GistDetailActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityGistDetailBinding
@@ -30,6 +30,7 @@ class GistDetailActivity : AppCompatActivity() {
     private lateinit var tokenManager: TokenManager
     private var gist: Gist? = null
     private var gistId: String? = null
+    private val fullContents = mutableMapOf<String, String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,6 +70,7 @@ class GistDetailActivity : AppCompatActivity() {
             result.onSuccess { gistData ->
                 gist = gistData
                 displayGist(gistData)
+                fetchTruncatedFiles(gistData)
             }.onFailure { error ->
                 Toast.makeText(this@GistDetailActivity, error.message, Toast.LENGTH_LONG).show()
                 finish()
@@ -81,53 +83,133 @@ class GistDetailActivity : AppCompatActivity() {
         binding.toolbar.title = gist.files.values.firstOrNull()?.filename ?: "Gist Detail"
 
         binding.tvDescription.text = gist.description ?: "(tanpa deskripsi)"
-        binding.tvOwner.text = "👤 ${gist.owner?.login ?: "anonymous"}"
-        binding.tvVisibility.text = if (gist.isPublic) "🌐 Public" else "🔒 Secret"
+        binding.tvOwner.text = "\uD83D\uDC64 ${gist.owner?.login ?: "anonymous"}"
+        binding.tvVisibility.text = if (gist.isPublic) "\uD83C\uDF10 Public" else "\uD83D\uDD12 Secret"
         binding.tvFileCount.text = "${gist.files.size} file(s)"
 
-        // Tampilkan setiap file
         val fileContainer = binding.filesContainer
         fileContainer.removeAllViews()
 
         gist.files.forEach { (_, file) ->
-            val fileView = layoutInflater.inflate(R.layout.item_gist_file, fileContainer, false)
-            val tvFileName = fileView.findViewById<android.widget.TextView>(R.id.tvFileName)
-            val tvFileLang = fileView.findViewById<android.widget.TextView>(R.id.tvFileLanguage)
-            val tvFileContent = fileView.findViewById<android.widget.TextView>(R.id.tvFileContent)
-            val btnCopyFile = fileView.findViewById<android.widget.Button>(R.id.btnCopyFile)
-            val btnOpenRaw = fileView.findViewById<android.widget.Button>(R.id.btnOpenRaw)
+            val fileView = layoutInflater.inflate(R.layout.item_gist_file_detail, fileContainer, false)
+            val tvFileName = fileView.findViewById<TextView>(R.id.tvFileName)
+            val tvFileLang = fileView.findViewById<TextView>(R.id.tvFileLanguage)
+            val tvFileContent = fileView.findViewById<TextView>(R.id.tvFileContent)
+            val btnCopyFile = fileView.findViewById<Button>(R.id.btnCopyFile)
+            val btnShowMore = fileView.findViewById<Button>(R.id.btnShowMore)
+            val btnOpenRaw = fileView.findViewById<Button>(R.id.btnOpenRaw)
+            val progressFile = fileView.findViewById<View>(R.id.progressFile)
 
             tvFileName.text = file.filename ?: "(unknown)"
             tvFileLang.text = file.language ?: "text"
 
-            // Tampilkan konten (dipotong jika panjang)
+            // Scrollable content area
+            tvFileContent.movementMethod = ScrollingMovementMethod()
+
             val content = file.content ?: "(tidak ada konten)"
-            tvFileContent.text = if (content.length > 2000) {
-                content.take(2000) + "\n\n... (terpotong, buka raw URL untuk selengkapnya)"
+            val isTruncated = file.truncated == true
+
+            if (isTruncated) {
+                // Tampilkan konten yang ada + loading indicator
+                tvFileContent.text = content + "\n\n\u23F3 Memuat konten lengkap..."
+                btnShowMore.visibility = View.VISIBLE
+                btnShowMore.text = "\u23F3 Loading..."
+                btnShowMore.isEnabled = false
+                progressFile.visibility = View.VISIBLE
             } else {
-                content
+                tvFileContent.text = content
+                btnShowMore.visibility = View.GONE
+                progressFile.visibility = View.GONE
+            }
+
+            btnShowMore.setOnClickListener {
+                val full = fullContents[file.filename]
+                if (full != null) {
+                    tvFileContent.text = full
+                    btnShowMore.visibility = View.GONE
+                }
             }
 
             btnCopyFile.setOnClickListener {
+                val textToCopy = fullContents[file.filename] ?: content
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("gist_file", content))
+                clipboard.setPrimaryClip(ClipData.newPlainText("gist_file", textToCopy))
                 Toast.makeText(this, "Konten disalin!", Toast.LENGTH_SHORT).show()
             }
 
             btnOpenRaw.setOnClickListener {
                 file.rawUrl?.let { url ->
-                    val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
-                    startActivity(intent)
+                    startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
                 }
             }
 
             fileContainer.addView(fileView)
         }
 
-        // Tombol edit/delete hanya untuk pemilik
         val isOwner = tokenManager.hasToken()
         binding.btnEdit.visibility = if (isOwner) View.VISIBLE else View.GONE
         binding.btnDelete.visibility = if (isOwner) View.VISIBLE else View.GONE
+    }
+
+    /** Fetch full content untuk file-file yang truncated */
+    private fun fetchTruncatedFiles(gist: Gist) {
+        val token = tokenManager.getToken()
+
+        gist.files.forEach { (filename, file) ->
+            if (file.truncated == true && !file.rawUrl.isNullOrEmpty()) {
+                lifecycleScope.launch {
+                    val fullContent = repository.fetchRawContent(file.rawUrl!!, token)
+
+                    if (fullContent.isNotEmpty()) {
+                        fullContents[filename] = fullContent
+
+                        // Update view yang sesuai
+                        val fileContainer = binding.filesContainer
+                        for (i in 0 until fileContainer.childCount) {
+                            val child = fileContainer.getChildAt(i)
+                            val tvFn = child.findViewById<TextView>(R.id.tvFileName)
+                            if (tvFn?.text == filename) {
+                                val contentTv = child.findViewById<TextView>(R.id.tvFileContent)
+                                val showMore = child.findViewById<Button>(R.id.btnShowMore)
+                                val progress = child.findViewById<View>(R.id.progressFile)
+
+                                progress?.visibility = View.GONE
+                                contentTv?.text = fullContent
+                                showMore?.visibility = View.GONE
+                                // Sudah langsung tampil full
+                                break
+                            }
+                        }
+                    } else {
+                        // Fallback: fetch gagal, biarkan konten terpotong + tombol raw
+                        updateButtonToRaw(filename)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun updateButtonToRaw(filename: String) {
+        val fileContainer = binding.filesContainer
+        for (i in 0 until fileContainer.childCount) {
+            val child = fileContainer.getChildAt(i)
+            val tvFn = child.findViewById<TextView>(R.id.tvFileName)
+            if (tvFn?.text == filename) {
+                val showMore = child.findViewById<Button>(R.id.btnShowMore)
+                val progress = child.findViewById<View>(R.id.progressFile)
+                progress?.visibility = View.GONE
+                showMore?.apply {
+                    text = "\uD83D\uDD17 Buka Raw URL"
+                    isEnabled = true
+                    setOnClickListener {
+                        gist?.files?.get(filename)?.rawUrl?.let { url ->
+                            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+                        }
+                    }
+                }
+                break
+            }
+        }
     }
 
     private fun shareGist() {
@@ -143,7 +225,6 @@ class GistDetailActivity : AppCompatActivity() {
 
     private fun editGist() {
         gist?.let { gistData ->
-            // Ambil file pertama dari gist
             val firstFile = gistData.files.values.firstOrNull()
             val firstFilename = gistData.files.keys.firstOrNull()
 
@@ -151,9 +232,10 @@ class GistDetailActivity : AppCompatActivity() {
                 putExtra("edit_gist_id", gistData.id)
                 putExtra("edit_gist_description", gistData.description ?: "")
                 putExtra("edit_gist_public", gistData.isPublic)
-                // Kirim data file pertama
                 putExtra("edit_gist_filename", firstFilename ?: "")
-                putExtra("edit_gist_content", firstFile?.content ?: "")
+                // Prioritaskan full content kalo ada
+                val bestContent = firstFilename?.let { fullContents[it] } ?: firstFile?.content ?: ""
+                putExtra("edit_gist_content", bestContent)
             }
             startActivity(intent)
         }
