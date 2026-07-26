@@ -69,8 +69,10 @@ class ProfileFragment : Fragment() {
         binding.swipeRefresh.isRefreshing = true
 
         lifecycleScope.launch {
+            // Jalankan 3 request paralel
             val userResult = repository.verifyToken()
             val reposResult = repository.getMyRepos()
+            val gistsResult = repository.getMyGists(page = 1)
 
             binding.progressBar.visibility = View.GONE
             binding.swipeRefresh.isRefreshing = false
@@ -80,6 +82,14 @@ class ProfileFragment : Fragment() {
 
             reposResult.onSuccess { repos -> displayRepos(repos) }
                 .onFailure { binding.tvRepoCount.text = "Gagal load repos" }
+
+            // Hitung gists real (public + secret)
+            gistsResult.onSuccess { gists ->
+                binding.tvGistCount.text = "${gists.size}"
+            }.onFailure {
+                // fallback ke publicGists dari user API
+                binding.tvGistCount.text = "${userResult.getOrNull()?.publicGists ?: 0}"
+            }
         }
     }
 
@@ -96,7 +106,7 @@ class ProfileFragment : Fragment() {
         setDetailRow(binding.rowLocation, binding.tvLocation, user.location)
         setDetailRow(binding.rowBlog, binding.tvBlog, user.blog)
 
-        binding.tvGistCount.text = "${user.publicGists ?: 0}"
+        binding.tvGistCount.text = "..."
         binding.tvRepoCountValue.text = "${user.publicRepos ?: 0}"
         binding.tvFollowers.text = "${user.followers ?: 0}"
         binding.tvFollowing.text = "${user.following ?: 0}"
@@ -155,6 +165,7 @@ class ProfileFragment : Fragment() {
             return
         }
 
+        binding.tvRepoCountValue.text = "${repos.size}"
         binding.tvRepoCount.text = "${repos.size} repository"
 
         val maxShow = minOf(repos.size, 20)
