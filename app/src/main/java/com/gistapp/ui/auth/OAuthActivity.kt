@@ -5,10 +5,12 @@ import android.os.Bundle
 import android.view.View
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.gistapp.databinding.ActivityOauthBinding
+import com.gistapp.R
 import com.gistapp.util.TokenManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -20,35 +22,38 @@ import java.util.concurrent.TimeUnit
 
 class OAuthActivity : AppCompatActivity() {
 
-    private lateinit var binding: ActivityOAuthBinding
+    private lateinit var webView: WebView
+    private lateinit var progressBar: ProgressBar
+    private lateinit var tvStatus: TextView
     private lateinit var tokenManager: TokenManager
 
     companion object {
-        const val OAUTH_CLIENT_ID = "Ov23li..." // TODO: ganti dengan punyamu
+        const val OAUTH_CLIENT_ID = "Ov23li..." // TODO: ganti dengan Client ID kamu
         const val OAUTH_SCOPE = "gist,user,repo"
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityOAuthBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        setContentView(R.layout.activity_oauth)
+
+        webView = findViewById(R.id.webView)
+        progressBar = findViewById(R.id.progressBar)
+        tvStatus = findViewById(R.id.tvStatus)
         tokenManager = TokenManager(this)
 
-        binding.webView.settings.javaScriptEnabled = true
-        binding.webView.settings.domStorageEnabled = true
+        webView.settings.javaScriptEnabled = true
+        webView.settings.domStorageEnabled = true
 
-        binding.webView.webViewClient = object : WebViewClient() {
-
-            override fun onPageFinished(view: WebView, url: String) {
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                binding.progressBar.visibility = View.GONE
+                progressBar.visibility = View.GONE
 
-                // Intercept redirect callback — GitHub redirect ke callback URL dengan ?code=xxx
-                if (url.contains("code=")) {
+                if (url != null && url.contains("code=")) {
                     val code = extractCode(url)
                     if (code != null) {
-                        view.visibility = View.GONE
+                        webView.visibility = View.GONE
                         exchangeCodeForToken(code)
                     } else {
                         Toast.makeText(this@OAuthActivity, "Gagal membaca kode OAuth", Toast.LENGTH_LONG).show()
@@ -61,8 +66,7 @@ class OAuthActivity : AppCompatActivity() {
         val authUrl = "https://github.com/login/oauth/authorize" +
                 "?client_id=$OAUTH_CLIENT_ID" +
                 "&scope=$OAUTH_SCOPE"
-
-        binding.webView.loadUrl(authUrl)
+        webView.loadUrl(authUrl)
     }
 
     private fun extractCode(url: String): String? {
@@ -73,8 +77,8 @@ class OAuthActivity : AppCompatActivity() {
     }
 
     private fun exchangeCodeForToken(code: String) {
-        binding.tvStatus.text = "Menukarkan kode dengan token..."
-        binding.tvStatus.visibility = View.VISIBLE
+        tvStatus.text = "Menukarkan kode dengan token..."
+        tvStatus.visibility = View.VISIBLE
 
         lifecycleScope.launch {
             try {
@@ -114,8 +118,8 @@ class OAuthActivity : AppCompatActivity() {
                 Toast.makeText(this@OAuthActivity, "Login berhasil!", Toast.LENGTH_SHORT).show()
                 finish()
             } catch (e: Exception) {
-                binding.tvStatus.text = "Gagal: ${e.message}"
-                binding.webView.visibility = View.VISIBLE
+                tvStatus.text = "Gagal: ${e.message}"
+                webView.visibility = View.VISIBLE
                 Toast.makeText(this@OAuthActivity, "OAuth gagal: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
