@@ -7,18 +7,16 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.gistapp.R
+import androidx.recyclerview.widget.RecyclerView
 import com.gistapp.data.remote.RetrofitClient
 import com.gistapp.data.repository.GistRepository
 import com.gistapp.databinding.FragmentGistListBinding
 import com.gistapp.ui.gistdetail.GistDetailActivity
 import com.gistapp.util.TokenManager
+import kotlinx.coroutines.launch
 
-/**
- * Fragment untuk menampilkan daftar gists (My Gists / Public Gists).
- */
 class GistListFragment : Fragment() {
 
     private var _binding: FragmentGistListBinding? = null
@@ -30,6 +28,7 @@ class GistListFragment : Fragment() {
     private var isPublic: Boolean = false
     private var currentPage: Int = 1
     private var isLoading: Boolean = false
+    private var hasMore: Boolean = true
 
     companion object {
         private const val ARG_IS_PUBLIC = "is_public"
@@ -75,27 +74,24 @@ class GistListFragment : Fragment() {
 
         binding.swipeRefresh.setOnRefreshListener {
             currentPage = 1
+            hasMore = true
             adapter.clear()
             loadGists()
         }
 
-        // Load more saat scroll ke bawah (pagination)
-        binding.recyclerView.addOnScrollListener(object : androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
-            override fun onScrolled(recyclerView: androidx.recyclerview.widget.RecyclerView, dx: Int, dy: Int) {
-                super.onScrolled(recyclerView, dx, dy)
-                val layoutManager = recyclerView.layoutManager as LinearLayoutManager
-                val visibleItemCount = layoutManager.childCount
-                val totalItemCount = layoutManager.itemCount
-                val firstVisibleItem = layoutManager.findFirstVisibleItemPosition()
-
-                if (!isLoading && (visibleItemCount + firstVisibleItem) >= totalItemCount && firstVisibleItem >= 0) {
+        binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                super.onScrolled(rv, dx, dy)
+                val layoutManager = rv.layoutManager as LinearLayoutManager
+                if (!isLoading && hasMore &&
+                    layoutManager.findLastVisibleItemPosition() >= layoutManager.itemCount - 3
+                ) {
                     currentPage++
                     loadGists()
                 }
             }
         })
 
-        // Cek login untuk tab My Gists
         if (!isPublic && !tokenManager.hasToken()) {
             binding.tvEmpty.text = "Silakan login untuk melihat gists Anda"
             binding.tvEmpty.visibility = View.VISIBLE
@@ -110,22 +106,23 @@ class GistListFragment : Fragment() {
         isLoading = true
         binding.progressBar.visibility = if (currentPage == 1) View.VISIBLE else View.GONE
 
-        val call = if (isPublic) {
-            repository.getPublicGists(currentPage)
-        } else {
-            repository.getMyGists(currentPage)
-        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = if (isPublic) {
+                repository.getPublicGists(currentPage)
+            } else {
+                repository.getMyGists(currentPage)
+            }
 
-        kotlinx.coroutines.MainScope().launch {
-            val result = call
             binding.progressBar.visibility = View.GONE
             binding.swipeRefresh.isRefreshing = false
             isLoading = false
 
             result.onSuccess { gists ->
+                if (gists.size < 30) hasMore = false
                 adapter.addGists(gists)
                 if (adapter.itemCount == 0) {
-                    binding.tvEmpty.text = if (isPublic) "Tidak ada public gists" else "Belum ada gists"
+                    binding.tvEmpty.text =
+                        if (isPublic) "Tidak ada public gists" else "Belum ada gists"
                     binding.tvEmpty.visibility = View.VISIBLE
                     binding.recyclerView.visibility = View.GONE
                 } else {
