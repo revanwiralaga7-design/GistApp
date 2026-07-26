@@ -101,9 +101,11 @@
                             android:orientation="horizontal"
                             android:gravity="center_vertical">
 
-                            <View
+                            <ImageView
+                                android:id="@+id/ivAvatar"
                                 android:layout_width="48dp"
                                 android:layout_height="48dp"
+                                android:scaleType="centerCrop"
                                 android:background="@drawable/bg_avatar_placeholder" />
 
                             <LinearLayout
@@ -210,6 +212,7 @@
                             android:layout_marginTop="12dp">
 
                             <LinearLayout
+                                android:id="@+id/rowCompany"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:orientation="horizontal"
@@ -219,6 +222,7 @@
                             </LinearLayout>
 
                             <LinearLayout
+                                android:id="@+id/rowLocation"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:orientation="horizontal"
@@ -228,6 +232,7 @@
                             </LinearLayout>
 
                             <LinearLayout
+                                android:id="@+id/rowBlog"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:orientation="horizontal"

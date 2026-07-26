@@ -1,17 +1,16 @@
 package com.gistapp.ui.profile
 
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import com.gistapp.R
 import com.gistapp.data.model.GitHubRepo
-import com.gistapp.data.remote.GitHubApiService
 import com.gistapp.data.remote.GitHubUserResponse
 import com.gistapp.data.remote.RetrofitClient
 import com.gistapp.data.repository.GistRepository
@@ -19,7 +18,12 @@ import com.gistapp.databinding.FragmentProfileBinding
 import com.gistapp.databinding.ItemRepoBinding
 import com.gistapp.ui.auth.AuthActivity
 import com.gistapp.util.TokenManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 class ProfileFragment : Fragment() {
 
@@ -28,7 +32,6 @@ class ProfileFragment : Fragment() {
 
     private lateinit var repository: GistRepository
     private lateinit var tokenManager: TokenManager
-    private var userLogin: String? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -66,7 +69,6 @@ class ProfileFragment : Fragment() {
         binding.swipeRefresh.isRefreshing = true
 
         lifecycleScope.launch {
-            // Load user info
             val userResult = repository.verifyToken()
             val reposResult = repository.getMyRepos()
 
@@ -82,27 +84,64 @@ class ProfileFragment : Fragment() {
     }
 
     private fun displayUser(user: GitHubUserResponse) {
-        userLogin = user.login
         binding.tvUsername.text = "@${user.login ?: "?"}"
-        binding.tvName.text = user.name ?: user.login ?: "-"
-        binding.tvBio.text = user.bio ?: "Tidak ada bio"
-        if (user.bio.isNullOrEmpty()) binding.tvBio.visibility = View.GONE
+        binding.tvName.text = user.name ?: user.login ?: "Unknown"
+        binding.tvBio.text = user.bio
+
+        if (user.bio.isNullOrBlank()) binding.tvBio.visibility = View.GONE
         else binding.tvBio.visibility = View.VISIBLE
 
-        binding.tvLocation.text = user.location ?: "-"
-        binding.tvCompany.text = user.company ?: "-"
-        binding.tvBlog.text = user.blog ?: "-"
+        // Detail rows: hide if empty
+        setDetailRow(binding.rowCompany, binding.tvCompany, user.company)
+        setDetailRow(binding.rowLocation, binding.tvLocation, user.location)
+        setDetailRow(binding.rowBlog, binding.tvBlog, user.blog)
 
         binding.tvGistCount.text = "${user.publicGists ?: 0}"
         binding.tvRepoCountValue.text = "${user.publicRepos ?: 0}"
         binding.tvFollowers.text = "${user.followers ?: 0}"
         binding.tvFollowing.text = "${user.following ?: 0}"
 
-        // Buka profil di browser
+        // Load avatar
+        user.avatarUrl?.let { loadAvatar(it, binding.ivAvatar) }
+
         binding.cardUserInfo.setOnClickListener {
             user.login?.let { login ->
-                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/$login"))
-                startActivity(intent)
+                startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/$login")))
+            }
+        }
+    }
+
+    private fun setDetailRow(row: View, tv: android.widget.TextView, value: String?) {
+        if (value.isNullOrBlank()) {
+            row.visibility = View.GONE
+        } else {
+            row.visibility = View.VISIBLE
+            tv.text = value
+        }
+    }
+
+    private fun loadAvatar(url: String, imageView: ImageView) {
+        lifecycleScope.launch {
+            try {
+                val bitmap = withContext(Dispatchers.IO) {
+                    val client = OkHttpClient.Builder()
+                        .connectTimeout(10, TimeUnit.SECONDS)
+                        .readTimeout(15, TimeUnit.SECONDS)
+                        .build()
+                    val request = Request.Builder()
+                        .url(url)
+                        .header("User-Agent", "GistApp-Android")
+                        .build()
+                    val response = client.newCall(request).execute()
+                    response.body?.byteStream()?.use { stream ->
+                        BitmapFactory.decodeStream(stream)
+                    }
+                }
+                if (bitmap != null) {
+                    imageView.setImageBitmap(bitmap)
+                }
+            } catch (_: Exception) {
+                // Keep placeholder
             }
         }
     }
@@ -118,7 +157,7 @@ class ProfileFragment : Fragment() {
 
         binding.tvRepoCount.text = "${repos.size} repository"
 
-        val maxShow = minOf(repos.size, 20) // max 20 biar gak berat
+        val maxShow = minOf(repos.size, 20)
         for (i in 0 until maxShow) {
             val repo = repos[i]
             val itemBinding = ItemRepoBinding.inflate(
@@ -128,6 +167,9 @@ class ProfileFragment : Fragment() {
             itemBinding.tvRepoName.text = repo.name ?: "-"
             itemBinding.tvRepoDesc.text = repo.description ?: "Tidak ada deskripsi"
             itemBinding.tvRepoLang.text = repo.language ?: "-"
+            if (repo.language.isNullOrBlank()) {
+                itemBinding.tvRepoLang.visibility = View.GONE
+            }
             itemBinding.tvRepoStars.text = "⭐ ${repo.stars ?: 0}"
             itemBinding.tvRepoForks.text = "🍴 ${repo.forks ?: 0}"
             itemBinding.tvRepoVisibility.text = if (repo.isPrivate) "🔒" else "🌐"

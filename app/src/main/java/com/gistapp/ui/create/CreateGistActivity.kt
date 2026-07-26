@@ -6,7 +6,6 @@ import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.gistapp.R
 import com.gistapp.data.model.CreateGistRequest
 import com.gistapp.data.model.GistFileContent
 import com.gistapp.data.remote.RetrofitClient
@@ -15,17 +14,11 @@ import com.gistapp.databinding.ActivityCreateGistBinding
 import com.gistapp.util.TokenManager
 import kotlinx.coroutines.launch
 
-/**
- * Halaman create / edit gist.
- * Edit mode: menerima edit_gist_id, edit_gist_description,
- *            edit_gist_public, edit_gist_filename, edit_gist_content.
- */
 class CreateGistActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityCreateGistBinding
     private lateinit var repository: GistRepository
     private lateinit var tokenManager: TokenManager
-
     private var editGistId: String? = null
     private var editOldFilename: String? = null
     private var isEditMode: Boolean = false
@@ -43,7 +36,6 @@ class CreateGistActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         binding.toolbar.setNavigationOnClickListener { finish() }
 
-        // Cek mode edit
         editGistId = intent.getStringExtra("edit_gist_id")
         isEditMode = !editGistId.isNullOrEmpty()
 
@@ -51,18 +43,22 @@ class CreateGistActivity : AppCompatActivity() {
             binding.toolbar.title = "Edit Gist"
             binding.btnCreate.text = "Update Gist"
 
-            // Pre-fill data lama
             editOldFilename = intent.getStringExtra("edit_gist_filename") ?: ""
-            val oldContent = intent.getStringExtra("edit_gist_content") ?: ""
+            val preContent = intent.getStringExtra("edit_gist_content") ?: ""
 
             binding.etFilename.setText(editOldFilename)
-            binding.etContent.setText(oldContent)
             binding.etDescription.setText(intent.getStringExtra("edit_gist_description") ?: "")
             binding.switchPublic.isChecked = intent.getBooleanExtra("edit_gist_public", true)
 
-            // Kalau content kosong (truncated), beri hint
-            if (oldContent.isEmpty() && !editOldFilename.isNullOrEmpty()) {
-                binding.tilContent.helperText = "⚠ Konten asli tidak tersedia (terpotong). Edit tetap bisa dilakukan."
+            if (preContent.isNotEmpty()) {
+                // Sudah ada konten → langsung tampilkan
+                binding.etContent.setText(preContent)
+            } else {
+                // Konten kosong (mungkin dari list yg truncated) → fetch ulang
+                binding.etContent.setText("⏳ Memuat konten...")
+                binding.etContent.isEnabled = false
+                binding.btnCreate.isEnabled = false
+                fetchContentForEdit()
             }
         } else {
             binding.toolbar.title = "Buat Gist Baru"
@@ -71,13 +67,53 @@ class CreateGistActivity : AppCompatActivity() {
         binding.btnCreate.setOnClickListener { createOrUpdateGist() }
     }
 
+    /** Fetch full gist content saat edit mode tapi konten kosong */
+    private fun fetchContentForEdit() {
+        binding.tilContent.helperText = "Mengambil konten dari server..."
+
+        lifecycleScope.launch {
+            val result = repository.getGist(editGistId!!)
+
+            result.onSuccess { gist ->
+                val firstFile = gist.files.values.firstOrNull()
+
+                if (firstFile?.truncated == true && !firstFile.rawUrl.isNullOrEmpty()) {
+                    // File truncated → fetch raw
+                    val raw = repository.fetchRawContent(firstFile.rawUrl!!, tokenManager.getToken())
+                    if (raw.isNotEmpty()) {
+                        binding.etContent.setText(raw)
+                    } else {
+                        binding.etContent.setText(firstFile.content ?: "(konten tidak tersedia)")
+                    }
+                } else {
+                    // Konten normal
+                    binding.etContent.setText(firstFile?.content ?: "")
+                }
+
+                // Update filename juga (mungkin berbeda dari list)
+                val actualFilename = gist.files.keys.firstOrNull()
+                if (!actualFilename.isNullOrEmpty() && actualFilename != editOldFilename) {
+                    editOldFilename = actualFilename
+                    binding.etFilename.setText(actualFilename)
+                }
+
+                binding.tilContent.helperText = null
+            }.onFailure { error ->
+                binding.etContent.setText("")
+                binding.tilContent.helperText = "⚠ Gagal memuat: ${error.message}"
+            }
+
+            binding.etContent.isEnabled = true
+            binding.btnCreate.isEnabled = true
+        }
+    }
+
     private fun createOrUpdateGist() {
         val filename = binding.etFilename.text.toString().trim()
         val description = binding.etDescription.text.toString().trim()
         val content = binding.etContent.text.toString()
         val isPublic = binding.switchPublic.isChecked
 
-        // Validasi
         if (TextUtils.isEmpty(filename)) {
             binding.tilFilename.error = "Nama file wajib diisi"
             return
@@ -90,12 +126,10 @@ class CreateGistActivity : AppCompatActivity() {
         }
         binding.tilContent.error = null
 
-        // Build file map (nullable value = delete file → untuk rename)
         val filesMap = mutableMapOf<String, GistFileContent?>()
         filesMap[filename] = GistFileContent(content)
 
         if (isEditMode && !editOldFilename.isNullOrEmpty() && editOldFilename != filename) {
-            // User rename file → hapus file lama
             filesMap[editOldFilename!!] = null
         }
 
@@ -109,11 +143,8 @@ class CreateGistActivity : AppCompatActivity() {
         binding.btnCreate.isEnabled = false
 
         lifecycleScope.launch {
-            val result = if (isEditMode) {
-                repository.updateGist(editGistId!!, request)
-            } else {
-                repository.createGist(request)
-            }
+            val result = if (isEditMode) repository.updateGist(editGistId!!, request)
+            else repository.createGist(request)
 
             binding.progressBar.visibility = View.GONE
             binding.btnCreate.isEnabled = true
@@ -127,9 +158,7 @@ class CreateGistActivity : AppCompatActivity() {
                 finish()
             }.onFailure { error ->
                 Toast.makeText(
-                    this@CreateGistActivity,
-                    "Gagal: ${error.message}",
-                    Toast.LENGTH_LONG
+                    this@CreateGistActivity, "Gagal: ${error.message}", Toast.LENGTH_LONG
                 ).show()
             }
         }

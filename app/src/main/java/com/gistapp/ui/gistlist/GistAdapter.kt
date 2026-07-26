@@ -6,11 +6,9 @@ import androidx.recyclerview.widget.RecyclerView
 import com.gistapp.data.model.Gist
 import com.gistapp.databinding.ItemGistBinding
 
-/**
- * RecyclerView adapter untuk daftar Gist.
- */
 class GistAdapter(
-    private val onGistClick: (Gist) -> Unit
+    private val onGistClick: (Gist) -> Unit,
+    private val onGistLongClick: ((Gist) -> Unit)? = null
 ) : RecyclerView.Adapter<GistAdapter.GistViewHolder>() {
 
     private val gists = mutableListOf<Gist>()
@@ -19,7 +17,7 @@ class GistAdapter(
         val binding = ItemGistBinding.inflate(
             LayoutInflater.from(parent.context), parent, false
         )
-        return GistViewHolder(binding, onGistClick)
+        return GistViewHolder(binding, onGistClick, onGistLongClick)
     }
 
     override fun onBindViewHolder(holder: GistViewHolder, position: Int) {
@@ -42,35 +40,32 @@ class GistAdapter(
 
     class GistViewHolder(
         private val binding: ItemGistBinding,
-        private val onGistClick: (Gist) -> Unit
+        private val onGistClick: (Gist) -> Unit,
+        private val onGistLongClick: ((Gist) -> Unit)?
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(gist: Gist) {
-            // Ambil file pertama dari map
             val firstFile = gist.files.values.firstOrNull()
 
             binding.tvGistTitle.text = firstFile?.filename ?: "(tanpa nama)"
             binding.tvDescription.text = gist.description?.take(120) ?: "Tidak ada deskripsi"
             binding.tvLanguage.text = firstFile?.language ?: "Unknown"
-            binding.tvVisibility.text = if (gist.isPublic) "🌐 Public" else "🔒 Secret"
+            binding.tvVisibility.text = if (gist.isPublic) "\uD83C\uDF10 Public" else "\uD83D\uDD12 Secret"
             binding.tvFileCount.text = "${gist.files.size} file(s)"
             binding.tvOwner.text = gist.owner?.login ?: "anonymous"
-
-            // Time
             binding.tvUpdatedAt.text = gist.updatedAt?.let { formatDate(it) } ?: ""
 
-            binding.root.setOnClickListener {
-                onGistClick(gist)
+            binding.root.setOnClickListener { onGistClick(gist) }
+            binding.root.setOnLongClickListener {
+                onGistLongClick?.invoke(gist)
+                true  // consumed
             }
         }
 
         private fun formatDate(isoDate: String): String {
-            // Simple formatting: ambil 10 karakter pertama (yyyy-MM-dd) lalu ganti
             return try {
                 isoDate.substring(0, 10).replace("T", " ")
-            } catch (e: Exception) {
-                isoDate
-            }
+            } catch (e: Exception) { isoDate }
         }
     }
 }

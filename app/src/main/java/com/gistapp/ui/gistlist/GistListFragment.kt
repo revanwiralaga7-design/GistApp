@@ -13,6 +13,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.gistapp.data.remote.RetrofitClient
 import com.gistapp.data.repository.GistRepository
 import com.gistapp.databinding.FragmentGistListBinding
+import com.gistapp.ui.create.CreateGistActivity
 import com.gistapp.ui.gistdetail.GistDetailActivity
 import com.gistapp.util.TokenManager
 import kotlinx.coroutines.launch
@@ -62,12 +63,34 @@ class GistListFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        adapter = GistAdapter { gist ->
-            val intent = Intent(requireContext(), GistDetailActivity::class.java).apply {
-                putExtra("gist_id", gist.id)
+        adapter = GistAdapter(
+            onGistClick = { gist ->
+                val intent = Intent(requireContext(), GistDetailActivity::class.java).apply {
+                    putExtra("gist_id", gist.id)
+                }
+                startActivity(intent)
+            },
+            onGistLongClick = { gist ->
+                // Long-press → langsung edit (hanya jika login)
+                if (tokenManager.hasToken()) {
+                    val firstFile = gist.files.values.firstOrNull()
+                    val intent = Intent(requireContext(), CreateGistActivity::class.java).apply {
+                        putExtra("edit_gist_id", gist.id)
+                        putExtra("edit_gist_description", gist.description ?: "")
+                        putExtra("edit_gist_public", gist.isPublic)
+                        putExtra("edit_gist_filename", gist.files.keys.firstOrNull() ?: "")
+                        putExtra("edit_gist_content", firstFile?.content ?: "")
+                    }
+                    startActivity(intent)
+                } else {
+                    // Belum login → buka detail
+                    val intent = Intent(requireContext(), GistDetailActivity::class.java).apply {
+                        putExtra("gist_id", gist.id)
+                    }
+                    startActivity(intent)
+                }
             }
-            startActivity(intent)
-        }
+        )
 
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
