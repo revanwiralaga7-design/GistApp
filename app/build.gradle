@@ -81,6 +81,9 @@ dependencies {
     // Encrypted SharedPreferences (API 23+, tapi kita pakai API 26+)
     implementation 'androidx.security:security-crypto:1.1.0-alpha06'
 
+    // Chrome Custom Tabs (OAuth)
+    implementation 'androidx.browser:browser:1.7.0'
+
     // Markdown rendering (opsional, untuk preview)
     implementation 'io.noties.markwon:core:4.6.2'
 
