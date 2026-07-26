@@ -5,13 +5,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Allow Chrome Custom Tabs (for OAuth) -->
-    <queries>
-        <intent>
-            <action android:name="android.support.customtabs.action.CustomTabsService" />
-        </intent>
-    </queries>
-
     <application
         android:name=".GistApplication"
         android:allowBackup="true"
@@ -25,22 +18,17 @@
         <activity
             android:name=".ui.auth.AuthActivity"
             android:exported="true"
-            android:launchMode="singleTask"
             android:theme="@style/Theme.GistApp">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- OAuth callback -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="gistapp"
-                    android:host="oauth" />
-            </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ui.auth.OAuthActivity"
+            android:exported="false"
+            android:theme="@style/Theme.GistApp" />
 
         <activity
             android:name=".ui.MainActivity"
