@@ -51,11 +51,10 @@ class CreateGistActivity : AppCompatActivity() {
             binding.switchPublic.isChecked = intent.getBooleanExtra("edit_gist_public", true)
 
             if (preContent.isNotEmpty()) {
-                // Sudah ada konten → langsung tampilkan
                 binding.etContent.setText(preContent)
             } else {
-                // Konten kosong (mungkin dari list yg truncated) → fetch ulang
-                binding.etContent.setText("⏳ Memuat konten...")
+                // Konten kosong → fetch dari API (file truncated)
+                binding.etContent.setText("Memuat konten...")
                 binding.etContent.isEnabled = false
                 binding.btnCreate.isEnabled = false
                 fetchContentForEdit()
@@ -67,40 +66,31 @@ class CreateGistActivity : AppCompatActivity() {
         binding.btnCreate.setOnClickListener { createOrUpdateGist() }
     }
 
-    /** Fetch full gist content saat edit mode tapi konten kosong */
+    /** Fetch content dari API — TAPI JANGAN overwrite filename */
     private fun fetchContentForEdit() {
         binding.tilContent.helperText = "Mengambil konten dari server..."
 
         lifecycleScope.launch {
             val result = repository.getGist(editGistId!!)
-
             result.onSuccess { gist ->
-                val firstFile = gist.files.values.firstOrNull()
-
-                if (firstFile?.truncated == true && !firstFile.rawUrl.isNullOrEmpty()) {
-                    // File truncated → fetch raw
-                    val raw = repository.fetchRawContent(firstFile.rawUrl!!, tokenManager.getToken())
-                    if (raw.isNotEmpty()) {
-                        binding.etContent.setText(raw)
+                // Ambil konten untuk file yang SAMA dengan editOldFilename
+                val file = gist.files[editOldFilename]
+                if (file != null) {
+                    if (file.truncated == true && !file.rawUrl.isNullOrEmpty()) {
+                        val raw = repository.fetchRawContent(file.rawUrl!!, tokenManager.getToken())
+                        binding.etContent.setText(raw.ifEmpty { file.content ?: "(tidak tersedia)" })
                     } else {
-                        binding.etContent.setText(firstFile.content ?: "(konten tidak tersedia)")
+                        binding.etContent.setText(file.content ?: "")
                     }
                 } else {
-                    // Konten normal
-                    binding.etContent.setText(firstFile?.content ?: "")
+                    // File tidak ditemukan di gist — fallback ke file pertama
+                    val first = gist.files.values.firstOrNull()
+                    binding.etContent.setText(first?.content ?: "(tidak tersedia)")
+                    binding.tilContent.helperText = "⚠ File '${editOldFilename}' tidak ditemukan, menampilkan file pertama"
                 }
-
-                // Update filename juga (mungkin berbeda dari list)
-                val actualFilename = gist.files.keys.firstOrNull()
-                if (!actualFilename.isNullOrEmpty() && actualFilename != editOldFilename) {
-                    editOldFilename = actualFilename
-                    binding.etFilename.setText(actualFilename)
-                }
-
-                binding.tilContent.helperText = null
             }.onFailure { error ->
                 binding.etContent.setText("")
-                binding.tilContent.helperText = "⚠ Gagal memuat: ${error.message}"
+                binding.tilContent.helperText = "Gagal memuat: ${error.message}"
             }
 
             binding.etContent.isEnabled = true
@@ -129,6 +119,7 @@ class CreateGistActivity : AppCompatActivity() {
         val filesMap = mutableMapOf<String, GistFileContent?>()
         filesMap[filename] = GistFileContent(content)
 
+        // Rename: hapus file lama
         if (isEditMode && !editOldFilename.isNullOrEmpty() && editOldFilename != filename) {
             filesMap[editOldFilename!!] = null
         }
@@ -157,9 +148,7 @@ class CreateGistActivity : AppCompatActivity() {
                 ).show()
                 finish()
             }.onFailure { error ->
-                Toast.makeText(
-                    this@CreateGistActivity, "Gagal: ${error.message}", Toast.LENGTH_LONG
-                ).show()
+                Toast.makeText(this@CreateGistActivity, "Gagal: ${error.message}", Toast.LENGTH_LONG).show()
             }
         }
     }

@@ -23,6 +23,9 @@ import com.gistapp.databinding.ActivityGistDetailBinding
 import com.gistapp.ui.create.CreateGistActivity
 import com.gistapp.util.TokenManager
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 class GistDetailActivity : AppCompatActivity() {
 
@@ -32,6 +35,7 @@ class GistDetailActivity : AppCompatActivity() {
     private var gist: Gist? = null
     private var gistId: String? = null
     private val fullContents = mutableMapOf<String, String>()
+    private var isOwner = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,9 +45,10 @@ class GistDetailActivity : AppCompatActivity() {
         tokenManager = TokenManager(this)
         val apiService = RetrofitClient.getApiService(tokenManager)
         repository = GistRepository(apiService)
+        isOwner = tokenManager.hasToken()
 
         gistId = intent.getStringExtra("gist_id")
-        if (gistId == null) {
+        if (gistId.isNullOrEmpty()) {
             Toast.makeText(this, "Gist ID tidak ditemukan", Toast.LENGTH_SHORT).show()
             finish()
             return
@@ -60,7 +65,7 @@ class GistDetailActivity : AppCompatActivity() {
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        if (tokenManager.hasToken()) {
+        if (isOwner) {
             menu.add(0, 100, 0, "Edit").setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
         }
         return true
@@ -68,7 +73,7 @@ class GistDetailActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == 100) {
-            editGist()
+            editGistByToolbar()
             return true
         }
         return super.onOptionsItemSelected(item)
@@ -99,14 +104,14 @@ class GistDetailActivity : AppCompatActivity() {
         binding.toolbar.title = gist.files.values.firstOrNull()?.filename ?: "Gist Detail"
 
         binding.tvDescription.text = gist.description ?: "(tanpa deskripsi)"
-        binding.tvOwner.text = "${gist.owner?.login ?: "anonymous"}"
+        binding.tvOwner.text = gist.owner?.login ?: "anonymous"
         binding.tvVisibility.text = if (gist.isPublic) "Public" else "Secret"
         binding.tvFileCount.text = "${gist.files.size} file(s)"
 
         val fileContainer = binding.filesContainer
         fileContainer.removeAllViews()
 
-        gist.files.forEach { (_, file) ->
+        gist.files.forEach { (fileName, file) ->
             val fileView = layoutInflater.inflate(R.layout.item_gist_file_detail, fileContainer, false)
             val tvFileName = fileView.findViewById<TextView>(R.id.tvFileName)
             val tvFileLang = fileView.findViewById<TextView>(R.id.tvFileLanguage)
@@ -136,12 +141,27 @@ class GistDetailActivity : AppCompatActivity() {
                 progressFile.visibility = View.GONE
             }
 
-            // Klik konten → edit
-            tvFileContent.setOnClickListener { editGist() }
-            btnEditFile.setOnClickListener { editGist() }
+            // ✅ CAPTURE spesifik: gistId + filename + content — bukan ambil firstOrNull
+            if (isOwner) {
+                btnEditFile.visibility = View.VISIBLE
+                val capturedGistId = gist.id
+                val capturedFilename = fileName
+                val capturedDescription = gist.description ?: ""
+                val capturedPublic = gist.isPublic
+
+                tvFileContent.setOnClickListener {
+                    startEdit(capturedGistId, capturedFilename, capturedDescription, capturedPublic)
+                }
+                btnEditFile.setOnClickListener {
+                    startEdit(capturedGistId, capturedFilename, capturedDescription, capturedPublic)
+                }
+            } else {
+                btnEditFile.visibility = View.GONE
+                tvFileContent.setOnClickListener(null)
+            }
 
             btnShowMore.setOnClickListener {
-                val full = fullContents[file.filename]
+                val full = fullContents[fileName]
                 if (full != null) {
                     tvFileContent.text = full
                     btnShowMore.visibility = View.GONE
@@ -149,7 +169,7 @@ class GistDetailActivity : AppCompatActivity() {
             }
 
             btnCopyFile.setOnClickListener {
-                val textToCopy = fullContents[file.filename] ?: content
+                val textToCopy = fullContents[fileName] ?: content
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("gist_file", textToCopy))
                 Toast.makeText(this, "Konten disalin!", Toast.LENGTH_SHORT).show()
@@ -161,16 +181,38 @@ class GistDetailActivity : AppCompatActivity() {
                 }
             }
 
-            // Sembunyikan tombol edit kalau bukan owner
-            if (!tokenManager.hasToken()) {
-                btnEditFile.visibility = View.GONE
-            }
-
             fileContainer.addView(fileView)
         }
 
-        // Tombol delete hanya kalau login
-        binding.btnDelete.visibility = if (tokenManager.hasToken()) View.VISIBLE else View.GONE
+        binding.btnDelete.visibility = if (isOwner) View.VISIBLE else View.GONE
+    }
+
+    /** Edit via toolbar — ambil info dari gist yang sudah diload */
+    private fun editGistByToolbar() {
+        val g = gist ?: return
+        val firstFile = g.files.values.firstOrNull()
+        val firstFilename = g.files.keys.firstOrNull()
+        val bestContent = firstFilename?.let { fullContents[it] } ?: firstFile?.content ?: ""
+        startEdit(g.id, firstFilename ?: "", g.description ?: "", g.isPublic, bestContent)
+    }
+
+    /** Buka CreateGistActivity dengan data spesifik */
+    private fun startEdit(
+        gistId: String,
+        filename: String,
+        description: String,
+        isPublic: Boolean,
+        preContent: String? = null
+    ) {
+        val content = preContent ?: fullContents[filename] ?: ""
+        val intent = Intent(this, CreateGistActivity::class.java).apply {
+            putExtra("edit_gist_id", gistId)
+            putExtra("edit_gist_description", description)
+            putExtra("edit_gist_public", isPublic)
+            putExtra("edit_gist_filename", filename)
+            putExtra("edit_gist_content", content)
+        }
+        startActivity(intent)
     }
 
     private fun fetchTruncatedFiles(gist: Gist) {
@@ -182,20 +224,7 @@ class GistDetailActivity : AppCompatActivity() {
                     val fullContent = repository.fetchRawContent(file.rawUrl!!, token)
                     if (fullContent.isNotEmpty()) {
                         fullContents[filename] = fullContent
-                        val fileContainer = binding.filesContainer
-                        for (i in 0 until fileContainer.childCount) {
-                            val child = fileContainer.getChildAt(i)
-                            val tvFn = child.findViewById<TextView>(R.id.tvFileName)
-                            if (tvFn?.text == filename) {
-                                val contentTv = child.findViewById<TextView>(R.id.tvFileContent)
-                                val showMore = child.findViewById<Button>(R.id.btnShowMore)
-                                val progress = child.findViewById<View>(R.id.progressFile)
-                                progress?.visibility = View.GONE
-                                contentTv?.text = fullContent
-                                showMore?.visibility = View.GONE
-                                break
-                            }
-                        }
+                        updateFileContentInView(filename, fullContent)
                     } else {
                         updateButtonToRaw(filename)
                     }
@@ -204,16 +233,27 @@ class GistDetailActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateButtonToRaw(filename: String) {
+    private fun updateFileContentInView(filename: String, fullContent: String) {
         val fileContainer = binding.filesContainer
         for (i in 0 until fileContainer.childCount) {
             val child = fileContainer.getChildAt(i)
             val tvFn = child.findViewById<TextView>(R.id.tvFileName)
             if (tvFn?.text == filename) {
-                val showMore = child.findViewById<Button>(R.id.btnShowMore)
-                val progress = child.findViewById<View>(R.id.progressFile)
-                progress?.visibility = View.GONE
-                showMore?.apply {
+                child.findViewById<TextView>(R.id.tvFileContent)?.text = fullContent
+                child.findViewById<Button>(R.id.btnShowMore)?.visibility = View.GONE
+                child.findViewById<View>(R.id.progressFile)?.visibility = View.GONE
+                break
+            }
+        }
+    }
+
+    private fun updateButtonToRaw(filename: String) {
+        val fileContainer = binding.filesContainer
+        for (i in 0 until fileContainer.childCount) {
+            val child = fileContainer.getChildAt(i)
+            if (child.findViewById<TextView>(R.id.tvFileName)?.text == filename) {
+                child.findViewById<View>(R.id.progressFile)?.visibility = View.GONE
+                child.findViewById<Button>(R.id.btnShowMore)?.apply {
                     text = "Buka Raw URL"
                     isEnabled = true
                     setOnClickListener {
@@ -238,27 +278,10 @@ class GistDetailActivity : AppCompatActivity() {
         }
     }
 
-    private fun editGist() {
-        gist?.let { gistData ->
-            val firstFile = gistData.files.values.firstOrNull()
-            val firstFilename = gistData.files.keys.firstOrNull()
-            val bestContent = firstFilename?.let { fullContents[it] } ?: firstFile?.content ?: ""
-
-            val intent = Intent(this, CreateGistActivity::class.java).apply {
-                putExtra("edit_gist_id", gistData.id)
-                putExtra("edit_gist_description", gistData.description ?: "")
-                putExtra("edit_gist_public", gistData.isPublic)
-                putExtra("edit_gist_filename", firstFilename ?: "")
-                putExtra("edit_gist_content", bestContent)
-            }
-            startActivity(intent)
-        }
-    }
-
     private fun confirmDelete() {
         AlertDialog.Builder(this)
             .setTitle("Hapus Gist")
-            .setMessage("Yakin hapus gist ini? Tindakan ini tidak bisa dibatalkan.")
+            .setMessage("Yakin hapus gist ini?")
             .setPositiveButton("Hapus") { _, _ -> deleteGist() }
             .setNegativeButton("Batal", null)
             .show()
@@ -267,15 +290,13 @@ class GistDetailActivity : AppCompatActivity() {
     private fun deleteGist() {
         lifecycleScope.launch {
             binding.progressBar.visibility = View.VISIBLE
-            val result = repository.deleteGist(gistId!!)
-            binding.progressBar.visibility = View.GONE
-
-            result.onSuccess {
+            repository.deleteGist(gistId!!).onSuccess {
                 Toast.makeText(this@GistDetailActivity, "Gist dihapus!", Toast.LENGTH_SHORT).show()
                 finish()
-            }.onFailure { error ->
-                Toast.makeText(this@GistDetailActivity, error.message, Toast.LENGTH_LONG).show()
+            }.onFailure {
+                Toast.makeText(this@GistDetailActivity, it.message, Toast.LENGTH_LONG).show()
             }
+            binding.progressBar.visibility = View.GONE
         }
     }
 }
