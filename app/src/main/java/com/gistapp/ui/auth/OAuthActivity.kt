@@ -1,5 +1,6 @@
 package com.gistapp.ui.auth
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.ProgressBar
@@ -8,6 +9,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.gistapp.R
+import com.gistapp.ui.MainActivity
 import com.gistapp.util.TokenManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -64,9 +66,9 @@ class OAuthActivity : AppCompatActivity() {
                     "?client_id=$OAUTH_CLIENT_ID" +
                     "&redirect_uri=$REDIRECT_URI" +
                     "&scope=$OAUTH_SCOPE"
-            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(authUrl))
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NO_HISTORY)
-            startActivity(intent)
+            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(authUrl))
+            browserIntent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
+            startActivity(browserIntent)
             finish()
         }
     }
@@ -110,9 +112,9 @@ class OAuthActivity : AppCompatActivity() {
 
                 tokenManager.saveToken(accessToken)
                 Toast.makeText(this@OAuthActivity, "Login berhasil!", Toast.LENGTH_SHORT).show()
-                val intent = android.content.Intent(this, com.gistapp.ui.MainActivity::class.java)
-                intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
-                startActivity(intent)
+                val mainIntent = Intent(this, MainActivity::class.java)
+                mainIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                startActivity(mainIntent)
                 finish()
             } catch (e: Exception) {
                 tvStatus.text = "Gagal: ${e.message}"
